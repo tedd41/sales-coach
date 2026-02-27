@@ -98,14 +98,26 @@ export async function generateStrategy(req: Request, res: Response) {
       repName: rep.name,
     });
 
-    // Get top performer patterns
-    const topRep = await prisma.salesRep.findFirst({
-      where: { name: "Anushka" },
-      include: { updates: { take: 3, orderBy: { createdAt: "desc" } } },
+    // Get top performer dynamically — rep with highest average sentiment
+    const allReps = await prisma.salesRep.findMany({
+      include: { updates: { orderBy: { createdAt: "desc" }, take: 10 } },
     });
+    const topRep = allReps
+      .map((r) => ({
+        rep: r,
+        avg:
+          r.updates.length > 0
+            ? r.updates.reduce((s, u) => s + (u.sentiment ?? 50), 0) /
+              r.updates.length
+            : 0,
+      }))
+      .sort((a, b) => b.avg - a.avg)[0]?.rep;
 
     const topPatterns = topRep
-      ? topRep.updates.map((u) => u.content).join("\n")
+      ? topRep.updates
+          .slice(0, 3)
+          .map((u) => u.content)
+          .join("\n")
       : "Focus on personalized outreach and quality over quantity.";
 
     const strategy = await openaiService.generateCoachingStrategy({

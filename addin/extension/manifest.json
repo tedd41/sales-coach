@@ -1,0 +1,56 @@
+{
+  "manifest_version": 3,
+  "name": "Sales Coach AI",
+  "version": "1.0",
+  "description": "AI-powered coaching replies for sales reps — reads Gmail context and generates personalized manager feedback.",
+
+  "icons": {
+    "16":  "icon-16.png",
+    "48":  "icon-48.png",
+    "128": "icon-128.png"
+  },
+
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+
+  "action": {
+    "default_title": "Sales Coach AI",
+    "default_icon": {
+      "16":  "icon-16.png",
+      "48":  "icon-48.png",
+      "128": "icon-128.png"
+    }
+  },
+
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'; connect-src http://localhost:3001 http://localhost:5174;"
+  },
+
+  "permissions": [
+    "sidePanel",
+    "storage",
+    "tabs",
+    "activeTab",
+    "alarms"
+  ],
+
+  "host_permissions": [
+    "https://mail.google.com/*",
+    "https://localhost:5174/*",
+    "http://localhost:3001/*"
+  ],
+
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+
+  "content_scripts": [
+    {
+      "matches": ["https://mail.google.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

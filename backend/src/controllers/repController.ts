@@ -173,3 +173,33 @@ export async function createFeedback(req: Request, res: Response) {
       .json({ error: "Unable to save feedback. Please try again." });
   }
 }
+
+export async function getRepByEmail(req: Request, res: Response) {
+  try {
+    const { email } = req.params;
+
+    const rep = await prisma.salesRep.findUnique({
+      where: { email: decodeURIComponent(email) },
+      include: {
+        updates: { orderBy: { createdAt: "desc" }, take: 5 },
+        feedbacks: { orderBy: { createdAt: "desc" }, take: 5 },
+      },
+    });
+
+    if (!rep) {
+      return res.status(404).json({ error: "Rep not found" });
+    }
+
+    res.json({ data: rep });
+  } catch (error) {
+    log.error(
+      "repController.getRepByEmail",
+      "Failed to fetch rep by email",
+      error,
+      {
+        email: req.params.email,
+      },
+    );
+    res.status(500).json({ error: "Unable to load rep. Please try again." });
+  }
+}
