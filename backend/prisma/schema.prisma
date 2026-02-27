@@ -1,0 +1,69 @@
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Manager {
+  id          String     @id @default(uuid())
+  name        String
+  email       String     @unique
+  role        String     @default("manager")  // manager | admin
+  createdAt   DateTime   @default(now())
+
+  reps        SalesRep[]
+}
+
+model SalesRep {
+  id          String   @id @default(uuid())
+  name        String
+  email       String?  @unique
+  role        String?
+  team        String?
+  managerId   String?                          // optional until SSO wired up
+  createdAt   DateTime @default(now())
+
+  manager     Manager?   @relation(fields: [managerId], references: [id])
+  updates     Update[]
+  feedbacks   Feedback[]
+}
+
+model Update {
+  id          String   @id @default(uuid())
+  repId       String
+  rep         SalesRep @relation(fields: [repId], references: [id])
+
+  content     String
+  metrics     String?      // JSON string: calls, demos etc
+  sentiment   Float?       // 0 to 100
+  tone        String?      // proactive, stressed etc
+
+  wordCount   Int?
+  createdAt   DateTime @default(now())
+}
+
+model Feedback {
+  id          String   @id @default(uuid())
+  repId       String
+  rep         SalesRep @relation(fields: [repId], references: [id])
+
+  content     String
+  category    String?      // coaching | manual | prospecting | mindset etc
+  effectivenessScore Float?
+
+  createdAt   DateTime @default(now())
+}
+
+// All backend errors land here — never expose stack traces to clients
+model AppLog {
+  id        String   @id @default(uuid())
+  level     String   // error | warn | info
+  context   String   // e.g. "repController.getRepById"
+  message   String
+  stack     String?
+  meta      String?  // JSON string for extra context (repId, userId, etc.)
+  createdAt DateTime @default(now())
+}
