@@ -1,6 +1,8 @@
 import { Request, Response } from "express";
 import { PrismaClient } from "@prisma/client";
 import { log } from "../services/logService";
+import { emailParser } from "../services/emailParsingService";
+import { sendDailyUpdateEmails } from "../services/cronService";
 
 const prisma = new PrismaClient();
 
@@ -14,6 +16,27 @@ const prisma = new PrismaClient();
  * Manager coaching reply:
  *   { repId, type: "feedback", content, subject?, category? }
  */
+/**
+ * POST /api/v1/sync/test-daily-update  (dev only)
+ * Manually fires the daily update job so you can verify PA + DEV_EMAIL routing
+ * without waiting for the cron schedule.
+ */
+export async function triggerDailyUpdate(req: Request, res: Response) {
+  if (process.env.NODE_ENV === "production") {
+    return res.status(404).json({ error: "Not found" });
+  }
+
+  log.info("syncController.triggerDailyUpdate", "Manual daily update trigger fired");
+
+  try {
+    await sendDailyUpdateEmails();
+    return res.json({ message: "Daily update job completed — check DEV_EMAIL" });
+  } catch (error) {
+    log.error("syncController.triggerDailyUpdate", "Job failed", error);
+    return res.status(500).json({ error: "Job failed — check server logs" });
+  }
+}
+
 export async function manualIngest(req: Request, res: Response) {
   try {
     const { repId, type, content, subject, category } = req.body;
@@ -75,13 +98,148 @@ export async function manualIngest(req: Request, res: Response) {
 }
 
 /**
- * POST /api/v1/sync/inbound
- * Mailgun inbound webhook - implement tomorrow per MAILGUN_TODO.md
+ * POST /api/v1/sync/webhook
+ * Power Automate inbound webhook.
+ *
+ * PA sends query params: From, To, Subject
+ * PA sends the raw Outlook HTML body as text/plain in req.body
+ *
+ * Routing logic:
+ *   - From is a SalesRep  → save as Update
+ *   - From is a Manager   → split To addresses, save a Feedback per matching SalesRep
+ *   - From unknown        → log warning & return 200 (never crash the webhook)
  */
-export async function mailgunInbound(req: Request, res: Response) {
-  log.info(
-    "syncController.mailgunInbound",
-    "Webhook received (not yet implemented)",
-  );
-  res.status(200).json({ message: "received" });
+export async function powerAutomateWebhook(req: Request, res: Response) {
+  try {
+    const from = ((req.query.From as string) || "").toLowerCase().trim();
+    const toRaw = (req.query.To as string) || "";
+    const subject = (req.query.Subject as string) || "";
+    const rawBody = typeof req.body === "string" ? req.body : "";
+
+    log.info("syncController.powerAutomateWebhook", "Webhook received", {
+      from,
+      to: toRaw,
+      subject,
+    });
+
+    if (!from) {
+      log.warn(
+        "syncController.powerAutomateWebhook",
+        "Missing From query param — ignoring",
+      );
+      return res.status(200).json({ message: "received" });
+    }
+
+    // Parse email body via GPT — verbatim, HTML stripped, latest message only
+    const { text: cleanText } = await emailParser.parse(rawBody);
+
+    // -----------------------------------------------------------------------
+    // Identify sender role
+    // -----------------------------------------------------------------------
+    // Note: emails are already lowercased — SQLite doesn't support mode: insensitive
+    const [rep, manager] = await Promise.all([
+      prisma.salesRep.findFirst({
+        where: { email: { equals: from } },
+      }),
+      prisma.manager.findFirst({
+        where: { email: { equals: from } },
+      }),
+    ]);
+
+    // -----------------------------------------------------------------------
+    // From = SalesRep → Update
+    // -----------------------------------------------------------------------
+    if (rep) {
+      const content = subject ? `[${subject}]\n\n${cleanText}` : cleanText;
+      const update = await prisma.update.create({
+        data: {
+          repId: rep.id,
+          content,
+          wordCount: cleanText.trim().split(/\s+/).filter(Boolean).length,
+        },
+      });
+      log.info(
+        "syncController.powerAutomateWebhook",
+        "Update saved from rep email",
+        { repId: rep.id, updateId: update.id },
+      );
+      return res.status(200).json({ message: "received", type: "update" });
+    }
+
+    // -----------------------------------------------------------------------
+    // From = Manager → Feedback for each matched rep in To
+    // -----------------------------------------------------------------------
+    if (manager) {
+      const toEmails = toRaw
+        .split(/[,;]+/)
+        .map((e) => e.trim().toLowerCase())
+        .filter(Boolean);
+
+      if (toEmails.length === 0) {
+        log.warn(
+          "syncController.powerAutomateWebhook",
+          "Manager email but no To addresses — ignoring",
+          { from },
+        );
+        return res.status(200).json({ message: "received" });
+      }
+
+      // Find which To addresses belong to SalesReps
+      const matchedReps = await prisma.salesRep.findMany({
+        where: {
+          email: { in: toEmails }, // toEmails already lowercased
+        },
+      });
+
+      if (matchedReps.length === 0) {
+        log.warn(
+          "syncController.powerAutomateWebhook",
+          "Manager email but no matching reps found in To — ignoring",
+          { from, toEmails },
+        );
+        return res.status(200).json({ message: "received" });
+      }
+
+      const content = subject ? `[${subject}]\n\n${cleanText}` : cleanText;
+
+      const results = await Promise.all(
+        matchedReps.map((r) =>
+          prisma.feedback.create({
+            data: {
+              repId: r.id,
+              content,
+              category: "email-sync",
+            },
+          }),
+        ),
+      );
+
+      log.info(
+        "syncController.powerAutomateWebhook",
+        `Feedback saved for ${results.length} rep(s) from manager email`,
+        { managerId: manager.id, repIds: matchedReps.map((r) => r.id) },
+      );
+      return res
+        .status(200)
+        .json({ message: "received", type: "feedback", count: results.length });
+    }
+
+    // -----------------------------------------------------------------------
+    // Unknown sender — log and move on
+    // -----------------------------------------------------------------------
+    log.warn(
+      "syncController.powerAutomateWebhook",
+      "Email from unknown sender — not a rep or manager in DB",
+      { from },
+    );
+    return res.status(200).json({ message: "received" });
+  } catch (error) {
+    log.error(
+      "syncController.powerAutomateWebhook",
+      "Unhandled error processing webhook",
+      error,
+    );
+    // Always return 200 to Power Automate so it doesn't retry indefinitely
+    return res.status(200).json({ message: "received" });
+  }
 }

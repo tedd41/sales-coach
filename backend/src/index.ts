@@ -7,6 +7,7 @@ import repRoutes from "./routes/repRoutes";
 import intelligenceRoutes from "./routes/intelligenceRoutes";
 import dashboardRoutes from "./routes/dashboardRoutes";
 import syncRoutes from "./routes/syncRoutes";
+import { startCron } from "./services/cronService";
 
 dotenv.config();
 
@@ -44,4 +45,5 @@ app.get("/health", (req, res) => {
 
 app.listen(PORT, () => {
   logger.info(`🚀 Sales Coach API running on http://localhost:${PORT}`);
+  startCron();
 });
