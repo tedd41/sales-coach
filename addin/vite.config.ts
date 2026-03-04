@@ -5,6 +5,7 @@ import basicSsl from "@vitejs/plugin-basic-ssl";
 // Outlook add-ins MUST be served over HTTPS even on localhost.
 // basicSsl is only needed for the dev server — in production the Container App
 // handles TLS termination, so we skip it in production builds.
+// Tailwind v4 is wired up via PostCSS (postcss.config.js) — no Vite plugin needed.
 const isDev = process.env.NODE_ENV !== "production";
 
 export default defineConfig({

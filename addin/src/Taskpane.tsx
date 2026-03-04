@@ -1,15 +1,7 @@
-// @ts-nocheck — Office JS types live on window; optional chaining handles undefined
+// @ts-nocheck — Office JS types live on window.Office; optional chaining guards all access.
 import React, { useEffect, useState } from "react";
 
-// Relative URL — Vite proxies /api → http://localhost:3001 so the HTTPS
-// add-in page never makes mixed-content requests to a plain HTTP backend.
-const API = "/api/v1";
-
-// ── Legacy constant removed ──────────────────────────────────────────────────
-const _UNUSED = {
-  _placeholder: null,
-};
-void _UNUSED;
+const API = "/api/v1"; // Vite dev: proxied to http://localhost:3001 | prod: same origin (Express serves this build)
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -21,49 +13,34 @@ interface Rep {
   email: string;
 }
 
-type Status =
-  | "loading"
-  | "unknown_rep"
-  | "ready"
-  | "generating"
-  | "done"
-  | "error";
-type Platform = "outlook" | "gmail" | "demo";
-
-interface Props {
-  gmailMode?: boolean;
-}
-
-function detectPlatform(gmailMode: boolean): Platform {
-  if (gmailMode) return "gmail";
-  if (typeof Office !== "undefined" && Office?.context?.mailbox?.item)
-    return "outlook";
-  return "demo";
-}
+type Status = "loading" | "no_item" | "unknown_rep" | "ready" | "generating" | "done" | "error";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Component
 // ─────────────────────────────────────────────────────────────────────────────
 
-export default function Taskpane({ gmailMode = false }: Props) {
-  const [platform] = useState<Platform>(() => detectPlatform(gmailMode));
+export default function Taskpane() {
   const [status, setStatus] = useState<Status>("loading");
   const [rep, setRep] = useState<Rep | null>(null);
-  const [allReps, setAllReps] = useState<Rep[]>([]);
   const [emailBody, setEmailBody] = useState("");
   const [draft, setDraft] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
 
   useEffect(() => {
-    if (platform === "outlook") initOutlook();
-    else if (platform === "gmail") initGmail();
-    else initDemo();
+    init();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Init: Outlook ──────────────────────────────────────────────────────────
+  // ── Init ──────────────────────────────────────────────────────────────────
 
-  function initOutlook() {
-    const item = Office.context.mailbox.item;
+  function init() {
+    // item is not available if the taskpane is opened with no email selected
+    const item = Office?.context?.mailbox?.item;
+
+    if (!item) {
+      setStatus("no_item");
+      return;
+    }
+
     const senderEmail = item?.from?.emailAddress ?? "";
 
     item?.body?.getAsync(Office.CoercionType.Text, (result: any) => {
@@ -75,41 +52,7 @@ export default function Taskpane({ gmailMode = false }: Props) {
     lookupRepByEmail(senderEmail);
   }
 
-  // ── Init: Gmail (sender + body come via URL params from side panel) ─────────
-
-  function initGmail() {
-    const params = new URLSearchParams(window.location.search);
-    const senderEmail = decodeURIComponent(params.get("sender") ?? "");
-    const body = decodeURIComponent(params.get("body") ?? "");
-
-    if (senderEmail) {
-      setEmailBody(body.slice(0, 800).trim());
-      lookupRepByEmail(senderEmail);
-    } else {
-      // No context yet — fall through to demo mode
-      initDemo();
-    }
-  }
-
-  // ── Init: Demo (rep dropdown from backend) ─────────────────────────────────
-
-  function initDemo() {
-    fetch(`${API}/reps`)
-      .then((r) => r.json())
-      .then((json) => {
-        const reps = (json.data ?? []) as Rep[];
-        setAllReps(reps);
-        if (reps.length > 0) setRep(reps[0]);
-        setEmailBody("");
-        setStatus("ready");
-      })
-      .catch(() => {
-        setStatus("error");
-        setErrorMsg("Backend unreachable. Is the server running on :3001?");
-      });
-  }
-
-  // ── Shared: look up rep by email ───────────────────────────────────────────
+  // ── Rep lookup ────────────────────────────────────────────────────────────
 
   function lookupRepByEmail(email: string) {
     fetch(`${API}/reps/by-email/${encodeURIComponent(email)}`)
@@ -123,12 +66,12 @@ export default function Taskpane({ gmailMode = false }: Props) {
         }
       })
       .catch(() => {
-        setStatus("unknown_rep");
-        setErrorMsg("Couldn't reach backend to check rep.");
+        setStatus("error");
+        setErrorMsg("Couldn't reach the backend. Is the server running?");
       });
   }
 
-  // ── Generate coaching draft ────────────────────────────────────────────────
+  // ── Generate draft ────────────────────────────────────────────────────────
 
   async function generateDraft() {
     if (!rep?.id) return;
@@ -147,236 +90,118 @@ export default function Taskpane({ gmailMode = false }: Props) {
       setStatus("done");
     } catch {
       setStatus("error");
-      setErrorMsg("Generation failed — check backend console.");
+      setErrorMsg("Draft generation failed — check backend console.");
     }
   }
 
-  // ── Insert / copy reply ────────────────────────────────────────────────────
+  // ── Insert reply ──────────────────────────────────────────────────────────
 
   function insertReply() {
     if (!draft) return;
-    if (platform === "outlook") {
-      Office.context.mailbox.item?.displayReplyForm({
-        htmlBody: `<p>${draft.replace(/\n/g, "<br/>")}</p>`,
-      });
-    } else if (platform === "gmail") {
-      window.parent.postMessage(
-        { type: "SALES_COACH_INSERT_REPLY", text: draft },
-        "*",
-      );
-    } else {
-      navigator.clipboard.writeText(draft).catch(() => {});
-      alert("Copied to clipboard!");
-    }
+    Office.context.mailbox.item?.displayReplyForm({
+      htmlBody: `<p>${draft.replace(/\n/g, "<br/>")}</p>`,
+    });
   }
 
-  // ── UI ─────────────────────────────────────────────────────────────────────
-
-  const BADGE: Record<Platform, { label: string; bg: string }> = {
-    outlook: { label: "OUTLOOK", bg: "#0f6cbd" },
-    gmail: { label: "GMAIL", bg: "#ea4335" },
-    demo: { label: "DEMO", bg: "#ff8c00" },
-  };
-  const badge = BADGE[platform];
+  // ─────────────────────────────────────────────────────────────────────────
+  // Render
+  // ─────────────────────────────────────────────────────────────────────────
 
   return (
-    <div style={styles.container}>
+    <div className="flex flex-col min-h-screen bg-gray-50 p-4 gap-3 font-[Segoe_UI,sans-serif]">
+
       {/* Header */}
-      <div style={styles.header}>
-        <span style={styles.logo}>⚡</span>
-        <span style={styles.title}>Sales Coach</span>
-        <span style={{ ...styles.badge, background: badge.bg }}>
-          {badge.label}
+      <div className="flex items-center gap-2 mb-1">
+        <span className="text-xl">⚡</span>
+        <span className="text-base font-bold text-gray-900">Sales Coach</span>
+        <span className="ml-auto text-[10px] font-bold text-white bg-[#0f6cbd] rounded px-1.5 py-0.5 tracking-wide">
+          OUTLOOK
         </span>
       </div>
 
-      {/* States */}
-      {status === "loading" && <p style={styles.muted}>Reading email…</p>}
+      {/* Loading */}
+      {status === "loading" && (
+        <p className="text-xs text-gray-400">Reading email…</p>
+      )}
 
+      {/* No email open */}
+      {status === "no_item" && (
+        <div className="text-sm text-gray-600 bg-blue-50 border border-blue-200 rounded-md p-3">
+          Open an email first, then click <strong>Sales Coach</strong>.
+        </div>
+      )}
+
+      {/* Unknown rep */}
       {status === "unknown_rep" && (
-        <div style={styles.notice}>
-          <p>Sender not found in the sales team roster.</p>
-          <p style={styles.muted}>
-            Only registered team members have coaching profiles.
+        <div className="text-sm text-gray-600 bg-yellow-50 border border-yellow-200 rounded-md p-3">
+          <p className="font-semibold">Sender not on the roster</p>
+          <p className="text-xs text-gray-500 mt-1">
+            Only registered sales reps have coaching profiles.
           </p>
         </div>
       )}
 
+      {/* Error */}
       {status === "error" && (
-        <div style={styles.errorBox}>{errorMsg || "Something went wrong."}</div>
+        <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-md p-3">
+          {errorMsg || "Something went wrong."}
+        </div>
       )}
 
-      {/* Demo rep dropdown */}
-      {platform === "demo" &&
-        allReps.length > 0 &&
-        (status === "ready" ||
-          status === "generating" ||
-          status === "done") && (
-          <div>
-            <label style={styles.label}>Select rep</label>
-            <select
-              style={styles.select}
-              value={rep?.id ?? ""}
-              onChange={(e) => {
-                const r = allReps.find((x) => x.id === e.target.value);
-                if (r) {
-                  setRep(r);
-                  setDraft("");
-                  setStatus("ready");
-                }
-              }}
-            >
-              {allReps.map((r) => (
-                <option key={r.id} value={r.id}>
-                  {r.name}
-                </option>
-              ))}
-            </select>
+      {/* Active panel — rep found */}
+      {(status === "ready" || status === "generating" || status === "done") && rep && (
+        <>
+          {/* Rep card */}
+          <div className="bg-white rounded-lg border border-gray-200 px-3.5 py-2.5">
+            <div className="text-sm font-semibold text-gray-900">{rep.name}</div>
+            <div className="text-xs text-gray-500 mt-0.5">{rep.email}</div>
           </div>
-        )}
 
-      {/* Active panel */}
-      {(status === "ready" || status === "generating" || status === "done") &&
-        rep && (
-          <>
-            {/* Rep card — Outlook / Gmail only */}
-            {platform !== "demo" && (
-              <div style={styles.repCard}>
-                <div style={styles.repName}>{rep.name}</div>
-                <div style={styles.repEmail}>{rep.email}</div>
-              </div>
-            )}
-
-            <label style={styles.label}>Email content (editable)</label>
+          {/* Email body */}
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+              Email content
+            </label>
             <textarea
-              style={styles.textarea}
+              className="w-full p-2.5 rounded-md border border-gray-200 text-sm bg-gray-100 resize-y focus:outline-none focus:ring-2 focus:ring-blue-400"
               value={emailBody}
               onChange={(e) => setEmailBody(e.target.value)}
               rows={5}
-              placeholder="Paste or edit the email here…"
+              placeholder="Paste or edit the email content here…"
             />
+          </div>
 
-            <button
-              style={{
-                ...styles.btn,
-                opacity: status === "generating" ? 0.6 : 1,
-              }}
-              onClick={generateDraft}
-              disabled={status === "generating"}
-            >
-              {status === "generating"
-                ? "Generating…"
-                : "✦ Generate Coaching Reply"}
-            </button>
+          {/* Generate button */}
+          <button
+            className="w-full py-2.5 rounded-md text-sm font-semibold text-white bg-[#0f6cbd] hover:bg-[#0d5ba3] disabled:opacity-60 transition-colors"
+            onClick={generateDraft}
+            disabled={status === "generating"}
+          >
+            {status === "generating" ? "Generating…" : "✦ Generate Coaching Reply"}
+          </button>
 
-            {status === "done" && draft && (
-              <>
-                <label style={styles.label}>Suggested reply</label>
-                <textarea
-                  style={{ ...styles.textarea, background: "#fff" }}
-                  value={draft}
-                  onChange={(e) => setDraft(e.target.value)}
-                  rows={10}
-                />
-                <button
-                  style={{ ...styles.btn, ...styles.btnGreen }}
-                  onClick={insertReply}
-                >
-                  {platform === "gmail"
-                    ? "✉ Insert as Reply in Gmail"
-                    : platform === "outlook"
-                      ? "✉ Insert as Reply"
-                      : "📋 Copy to Clipboard"}
-                </button>
-              </>
-            )}
-          </>
-        )}
+          {/* Draft output */}
+          {status === "done" && draft && (
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                Suggested reply
+              </label>
+              <textarea
+                className="w-full p-2.5 rounded-md border border-gray-200 text-sm bg-white resize-y focus:outline-none focus:ring-2 focus:ring-green-400"
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                rows={10}
+              />
+              <button
+                className="w-full py-2.5 rounded-md text-sm font-semibold text-white bg-[#107c10] hover:bg-[#0c5e0c] transition-colors"
+                onClick={insertReply}
+              >
+                ✉ Insert as Reply
+              </button>
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }
-
-// ── Styles ────────────────────────────────────────────────────────────────────
-
-const styles: Record<string, React.CSSProperties> = {
-  container: {
-    padding: 16,
-    display: "flex",
-    flexDirection: "column",
-    gap: 12,
-    minHeight: "100vh",
-    background: "#f9f9f9",
-    fontFamily: "'Segoe UI', 'Google Sans', Tahoma, sans-serif",
-    boxSizing: "border-box",
-  },
-  header: { display: "flex", alignItems: "center", gap: 8, marginBottom: 4 },
-  logo: { fontSize: 20 },
-  title: { fontSize: 16, fontWeight: 700, color: "#1a1a1a" },
-  badge: {
-    marginLeft: "auto",
-    fontSize: 10,
-    fontWeight: 700,
-    color: "#fff",
-    borderRadius: 4,
-    padding: "2px 6px",
-    letterSpacing: 0.5,
-  },
-  repCard: {
-    background: "#fff",
-    borderRadius: 8,
-    padding: "10px 14px",
-    border: "1px solid #e5e5e5",
-  },
-  repName: { fontWeight: 600, fontSize: 14, color: "#111" },
-  repEmail: { fontSize: 12, color: "#666", marginTop: 2 },
-  label: { fontSize: 12, fontWeight: 600, color: "#555", marginBottom: -4 },
-  select: {
-    width: "100%",
-    padding: "8px 10px",
-    borderRadius: 6,
-    border: "1px solid #ddd",
-    fontSize: 13,
-    fontFamily: "inherit",
-    background: "#fff",
-  },
-  textarea: {
-    width: "100%",
-    padding: 10,
-    borderRadius: 6,
-    border: "1px solid #ddd",
-    fontSize: 13,
-    fontFamily: "inherit",
-    resize: "vertical",
-    background: "#f5f5f5",
-    boxSizing: "border-box",
-  },
-  btn: {
-    background: "#0f6cbd",
-    color: "#fff",
-    border: "none",
-    borderRadius: 6,
-    padding: "10px 16px",
-    fontSize: 13,
-    fontWeight: 600,
-    cursor: "pointer",
-    width: "100%",
-  },
-  btnGreen: { background: "#107c10", marginTop: 4 },
-  muted: { fontSize: 12, color: "#888" },
-  notice: {
-    fontSize: 13,
-    color: "#555",
-    background: "#fff8e1",
-    border: "1px solid #ffe082",
-    borderRadius: 6,
-    padding: 12,
-  },
-  errorBox: {
-    fontSize: 13,
-    color: "#c00",
-    background: "#fff0f0",
-    border: "1px solid #fcc",
-    borderRadius: 6,
-    padding: 12,
-  },
-};

@@ -12,7 +12,8 @@
         "skipLibCheck": true,
         "types": [
             "office-js"
-        ]
+        ],
+        "noEmit": true
     },
     "include": [
         "src"
