@@ -65,6 +65,13 @@ async function main() {
         team: "Sales and Marketing",
         managerId: manager.id,
       },
+      {
+        name: "Devansh Tanwar",
+        email: "devansh.tanwar@atidan.com",
+        role: "Sales Rep",
+        team: "Sales and Marketing",
+        managerId: manager.id,
+      },
     ],
   });
 

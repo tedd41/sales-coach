@@ -1,5 +1,5 @@
 datasource db {
-  provider = "sqlite"
+  provider = "sqlserver"
   url      = env("DATABASE_URL")
 }
 
@@ -36,10 +36,10 @@ model Update {
   repId       String
   rep         SalesRep @relation(fields: [repId], references: [id])
 
-  content     String
-  metrics     String?      // JSON string: calls, demos etc
-  sentiment   Float?       // 0 to 100
-  tone        String?      // proactive, stressed etc
+  content     String   @db.NVarChar(Max)  // email bodies can be long
+  metrics     String?  @db.NVarChar(Max)  // JSON string: calls, demos etc
+  sentiment   Float?                      // 0 to 100
+  tone        String?
 
   wordCount   Int?
   createdAt   DateTime @default(now())
@@ -50,8 +50,8 @@ model Feedback {
   repId       String
   rep         SalesRep @relation(fields: [repId], references: [id])
 
-  content     String
-  category    String?      // coaching | manual | prospecting | mindset etc
+  content     String   @db.NVarChar(Max)  // email bodies can be long
+  category    String?                     // coaching | manual | prospecting | mindset etc
   effectivenessScore Float?
 
   createdAt   DateTime @default(now())
@@ -60,10 +60,10 @@ model Feedback {
 // All backend errors land here — never expose stack traces to clients
 model AppLog {
   id        String   @id @default(uuid())
-  level     String   // error | warn | info
-  context   String   // e.g. "repController.getRepById"
-  message   String
-  stack     String?
-  meta      String?  // JSON string for extra context (repId, userId, etc.)
+  level     String
+  context   String
+  message   String   @db.NVarChar(Max)
+  stack     String?  @db.NVarChar(Max)
+  meta      String?  @db.NVarChar(Max)   // JSON string for extra context
   createdAt DateTime @default(now())
 }

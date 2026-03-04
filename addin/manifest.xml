@@ -6,7 +6,7 @@
   xmlns:mailappor="http://schemas.microsoft.com/office/mailappversionoverrides/1.0"
   xsi:type="MailApp">
 
-  <!-- Add-in ID â€” unique per add-in, do not change after sideloading -->
+  <!-- Add-in ID unique per add-in, do not change after sideloading -->
   <Id>a8b3c4d5-e6f7-48a9-b0c1-d2e3f4a5b6c7</Id>
   <Version>1.0.0.0</Version>
   <ProviderName>Razor Technology</ProviderName>
@@ -65,7 +65,7 @@
         <DesktopFormFactor>
           <FunctionFile resid="Commands.Url" />
 
-          <!-- Message read surface â€” adds button to ribbon -->
+          <!-- Message read surface adds button to ribbon -->
           <ExtensionPoint xsi:type="MessageReadCommandSurface">
             <OfficeTab id="TabDefault">
               <Group id="msgReadGroup">

@@ -1,7 +1,9 @@
 // @ts-nocheck — Office JS types live on window; optional chaining handles undefined
 import React, { useEffect, useState } from "react";
 
-const API = "http://localhost:3001/api/v1";
+// Relative URL — Vite proxies /api → http://localhost:3001 so the HTTPS
+// add-in page never makes mixed-content requests to a plain HTTP backend.
+const API = "/api/v1";
 
 // ── Legacy constant removed ──────────────────────────────────────────────────
 const _UNUSED = {

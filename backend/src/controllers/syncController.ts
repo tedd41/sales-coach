@@ -3,8 +3,29 @@ import { PrismaClient } from "@prisma/client";
 import { log } from "../services/logService";
 import { emailParser } from "../services/emailParsingService";
 import { sendDailyUpdateEmails } from "../services/cronService";
+import { analyzeSentiment } from "../services/openaiService";
 
 const prisma = new PrismaClient();
+
+/** Fire-and-forget: enrich an Update row with sentiment + tone after save. */
+function enrichUpdateAsync(updateId: string, content: string): void {
+  analyzeSentiment(content)
+    .then((result) =>
+      prisma.update.update({
+        where: { id: updateId },
+        data: { sentiment: result.sentiment, tone: result.tone },
+      }),
+    )
+    .then(() =>
+      log.info("syncController.enrichUpdate", "Sentiment enriched", { updateId }),
+    )
+    .catch((err) =>
+      log.warn("syncController.enrichUpdate", "Sentiment enrichment failed", {
+        updateId,
+        error: err instanceof Error ? err.message : String(err),
+      }),
+    );
+}
 
 /**
  * POST /api/v1/sync/manual
@@ -39,14 +60,18 @@ export async function triggerDailyUpdate(req: Request, res: Response) {
 
 export async function manualIngest(req: Request, res: Response) {
   try {
-    const { repId, type, content, subject, category } = req.body;
+    const { repId, repEmail, type, content, subject, category } = req.body;
 
-    if (!repId || !content || !type) {
-      return res
-        .status(400)
-        .json({
-          error: "repId, type (update|feedback), and content are required",
-        });
+    if (!content || !type) {
+      return res.status(400).json({
+        error: "type (update|feedback) and content are required",
+      });
+    }
+
+    if (!repId && !repEmail) {
+      return res.status(400).json({
+        error: "Provide either repId or repEmail",
+      });
     }
 
     if (!["update", "feedback"].includes(type)) {
@@ -55,7 +80,12 @@ export async function manualIngest(req: Request, res: Response) {
         .json({ error: "type must be 'update' or 'feedback'" });
     }
 
-    const rep = await prisma.salesRep.findUnique({ where: { id: repId } });
+    const rep = repId
+      ? await prisma.salesRep.findUnique({ where: { id: repId } })
+      : await prisma.salesRep.findFirst({
+          where: { email: { equals: (repEmail as string).toLowerCase() } },
+        });
+
     if (!rep) {
       return res.status(404).json({ error: "Rep not found" });
     }
@@ -65,27 +95,29 @@ export async function manualIngest(req: Request, res: Response) {
     if (type === "update") {
       const update = await prisma.update.create({
         data: {
-          repId,
+          repId: rep.id,
           content: text,
           wordCount: content.trim().split(/\s+/).length,
         },
       });
       log.info("syncController.manualIngest", "Update saved", {
-        repId,
+        repId: rep.id,
         updateId: update.id,
       });
+      // Enrich with sentiment/tone in the background — don't block the response
+      enrichUpdateAsync(update.id, content);
       return res.json({ data: update });
     }
 
     const feedback = await prisma.feedback.create({
       data: {
-        repId,
+        repId: rep.id,
         content: text,
         category: category ?? "email-sync",
       },
     });
     log.info("syncController.manualIngest", "Feedback saved", {
-      repId,
+      repId: rep.id,
       feedbackId: feedback.id,
     });
     return res.json({ data: feedback });
@@ -136,13 +168,13 @@ export async function powerAutomateWebhook(req: Request, res: Response) {
     // -----------------------------------------------------------------------
     // Identify sender role
     // -----------------------------------------------------------------------
-    // Note: emails are already lowercased — SQLite doesn't support mode: insensitive
+    // Note: emails are already lowercased before comparison
     const [rep, manager] = await Promise.all([
       prisma.salesRep.findFirst({
-        where: { email: { equals: from } },
+        where: { email: { equals: from, mode: "insensitive" } },
       }),
       prisma.manager.findFirst({
-        where: { email: { equals: from } },
+        where: { email: { equals: from, mode: "insensitive" } },
       }),
     ]);
 
@@ -163,6 +195,8 @@ export async function powerAutomateWebhook(req: Request, res: Response) {
         "Update saved from rep email",
         { repId: rep.id, updateId: update.id },
       );
+      // Enrich with sentiment/tone in the background — don't block the webhook response
+      enrichUpdateAsync(update.id, cleanText);
       return res.status(200).json({ message: "received", type: "update" });
     }
 
@@ -187,7 +221,7 @@ export async function powerAutomateWebhook(req: Request, res: Response) {
       // Find which To addresses belong to SalesReps
       const matchedReps = await prisma.salesRep.findMany({
         where: {
-          email: { in: toEmails }, // toEmails already lowercased
+          email: { in: toEmails, mode: "insensitive" },
         },
       });
 
