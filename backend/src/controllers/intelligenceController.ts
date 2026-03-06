@@ -142,7 +142,7 @@ export async function generateStrategy(req: Request, res: Response) {
 
 export async function generateDraft(req: Request, res: Response) {
   try {
-    const { repId, latestUpdate } = req.body;
+    const { repId, latestUpdate, length, tone, customInstructions, managerName } = req.body;
 
     if (!repId) {
       return res.status(400).json({ error: "repId is required" });
@@ -187,6 +187,10 @@ export async function generateDraft(req: Request, res: Response) {
       update: updateContent,
       insights,
       repName: rep.name,
+      length: length ?? "original",
+      tone: tone ?? "original",
+      customInstructions: customInstructions ?? "",
+      managerName: managerName ?? "",
     });
 
     res.json({ data: { message: draft } });

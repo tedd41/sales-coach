@@ -243,27 +243,58 @@ export async function generateDraftResponse(data: {
   update: string;
   insights: any;
   repName: string;
+  length?: "original" | "short" | "medium";
+  tone?: "original" | "professional" | "enthusiastic" | "casual";
+  customInstructions?: string;
+  managerName?: string;
 }): Promise<string> {
+  const lengthInstruction =
+    data.length === "short"
+      ? "Keep the message concise — 1 to 2 short paragraphs."
+      : data.length === "medium"
+        ? "Write a moderate-length message — 2 to 3 paragraphs."
+        : "Match the natural length needed by the content — do not pad or truncate artificially.";
+
+  const toneInstruction =
+    data.tone === "professional"
+      ? "Maintain a polished, professional tone — clear and respectful."
+      : data.tone === "enthusiastic"
+        ? "Use an energetic, encouraging tone — upbeat and motivating."
+        : data.tone === "casual"
+          ? "Use a warm, informal tone — like a trusted colleague, not a corporate memo."
+          : "Mirror the tone that naturally fits the content and rep relationship.";
+
+  const customBlock = data.customInstructions?.trim()
+    ? `\nAdditional guidance from the manager:\n${data.customInstructions.trim()}`
+    : "";
+
   const messages: ChatMessage[] = [
     {
       role: "system",
-      content: `You are a sales manager writing personalized feedback.
+      content: `You are a sales manager writing personalized coaching feedback.
 
 You are supportive, direct and motivating.
 You avoid generic or robotic language.
-You use specific observations.`,
+You use specific observations from the rep's update.
+${lengthInstruction}
+${toneInstruction}${
+  data.managerName?.trim()
+    ? `\nSign off the message with your real name: ${data.managerName.trim()}.`
+    : "\nDo not include a sign-off or closing name placeholder."
+}`,
     },
     {
       role: "user",
-      content: `Write a personalized message for ${data.repName}.
+      content: `Write a personalized coaching message for ${data.repName}.
 
 Their recent update:
 "${data.update}"
 
 AI Insights:
 ${JSON.stringify(data.insights, null, 2)}
+${customBlock}
 
-Write a concise, practical and motivating message (3-4 paragraphs). Be specific and actionable.`,
+Be specific and actionable.`,
     },
   ];
 
