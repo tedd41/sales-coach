@@ -24,13 +24,13 @@ export function DraftCard({ draft, editing, onToggleEdit, onDraftChange }: Props
 
       {editing ? (
         <textarea
-          className="w-full px-5 pt-4 pb-5 text-sm text-gray-800 leading-relaxed resize-none focus:outline-none bg-transparent min-h-[220px] max-h-[320px]"
+          className="w-full px-6 pt-4 pb-5 text-sm text-gray-800 leading-relaxed resize-none focus:outline-none bg-transparent min-h-[220px] max-h-[320px]"
           value={draft}
           onChange={(e) => onDraftChange(e.target.value)}
           autoFocus
         />
       ) : (
-        <div className="px-5 pt-4 pb-5 min-h-[220px] max-h-[320px] overflow-y-auto">
+        <div style={{ padding: "16px 24px 20px 24px", minHeight: 220, maxHeight: 320, overflowY: "auto", scrollbarGutter: "stable" }}>
           <ReactMarkdown
             components={{
               p: ({ children }) => <p className="text-sm text-gray-800 leading-relaxed mb-3">{children}</p>,

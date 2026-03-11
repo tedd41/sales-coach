@@ -12,7 +12,7 @@
   <ProviderName>Razor Technology</ProviderName>
   <DefaultLocale>en-US</DefaultLocale>
 
-  <DisplayName DefaultValue="Sales Coach" />
+  <DisplayName DefaultValue="Management Coach" />
   <Description DefaultValue="AI-powered coaching reply generator for the sales team." />
 
   <IconUrl DefaultValue="https://unbarrable-undarned-karrie.ngrok-free.dev/icon-64.png" />
@@ -103,11 +103,11 @@
         <bt:Url id="Taskpane.Url" DefaultValue="https://unbarrable-undarned-karrie.ngrok-free.dev/index.html" />
       </bt:Urls>
       <bt:ShortStrings>
-        <bt:String id="GroupLabel" DefaultValue="Sales Coach" />
-        <bt:String id="TaskpaneButton.Label" DefaultValue="Sales Coach" />
+        <bt:String id="GroupLabel" DefaultValue="Management Coach" />
+        <bt:String id="TaskpaneButton.Label" DefaultValue="Management Coach" />
       </bt:ShortStrings>
       <bt:LongStrings>
-        <bt:String id="TaskpaneButton.Tooltip" DefaultValue="Open Sales Coach to generate a coaching reply for this rep." />
+        <bt:String id="TaskpaneButton.Tooltip" DefaultValue="Open Management Coach to generate a coaching reply for this rep." />
       </bt:LongStrings>
     </Resources>
   </VersionOverrides>

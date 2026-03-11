@@ -105,7 +105,7 @@ export function buildDailyUpdateEmail(rep: {
 
 <p>3. 🔧 <strong>If something didn't go as planned, what are you looking to do to improve?</strong></p>
 
-<p>Thanks,<br>Sales Coach Agent 🚀</p>
+<p>Thanks,<br>People Coach Agent 🚀</p>
 `.trim();
     
   return {

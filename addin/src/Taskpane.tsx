@@ -160,17 +160,17 @@ export default function Taskpane() {
 
             <div className="flex flex-col gap-2">
               <button
-              onClick={insertReply}
-              className="w-full py-3 text-sm font-semibold text-white bg-[#7c3aed] hover:bg-[#6d28d9] active:scale-[0.98] transition-all shadow-sm shadow-purple-200 tracking-wide"
-            >
-              Insert as Reply
-            </button>
-            <button
-              onClick={() => generateDraft(rep, emailBodyRef.current)}
-              className="w-full py-2.5 rounded-none text-xs font-semibold text-[#6d28d9] border border-purple-200 hover:bg-purple-50 active:bg-purple-100 transition-colors tracking-wide"
-            >
-              Regenerate
-            </button>
+                onClick={insertReply}
+                className="w-full py-3 rounded-xl text-sm font-semibold text-white bg-[#7c3aed] hover:bg-[#6d28d9] active:scale-[0.98] transition-all shadow-sm shadow-purple-200 tracking-wide"
+              >
+                Insert as Reply
+              </button>
+              <button
+                onClick={() => generateDraft(rep, emailBodyRef.current)}
+                className="w-full py-2.5 rounded-xl text-xs font-semibold text-[#6d28d9] border border-purple-200 hover:bg-purple-50 active:bg-purple-100 transition-colors tracking-wide"
+              >
+                Regenerate
+              </button>
             </div>
 
             <RefinePanel
